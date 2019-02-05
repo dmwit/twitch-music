@@ -123,6 +123,7 @@ def random_attacks(total_beats, attack_beats)
 	result
 end
 
+# Must be less than 1
 RhythmDensity = 5.0/8
 
 # A mild variant of the Viterbi algorithm. Given a hidden Markov model and a
@@ -221,8 +222,8 @@ def add_self_edges(transitionds, new_p)
 	new_transitionds
 end
 
-ChordProgression = add_self_edges(ChordProgressionRaw, 0.8)
-
+SelfProbability = 0.8
+ChordProgression = add_self_edges(ChordProgressionRaw, SelfProbability)
 ChordElements = {
 	0 => { 0 => 0.5, 2 => 0.225, 4 => 0.225, 6 => 0.04, 1 => 0.01 },
 	1 => { 1 => 0.32, 3 => 0.32, 5 => 0.32, 0 => 0.03, 2 => 0.01 },
