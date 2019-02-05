@@ -1,6 +1,3 @@
-# TODO: What is the difference between Hash::new and Hash.new? We use Hash::new
-# and Array.new. Maybe we should consistently use one or the other.
-
 # The "choose" from combinatorics (hence the extra c on the beginning). Sonic
 # Pi already stole the shorter name "choose", dang.
 def cchoose(m, n)
@@ -42,7 +39,7 @@ def transition_weights(from_)
 end
 
 # memoize transition_weights
-TransitionWeights = Hash::new { |h,k| h[k] = transition_weights(k) }
+TransitionWeights = Hash.new { |h,k| h[k] = transition_weights(k) }
 
 # Weighted (hence the extra w on the beginning) random choice. Hand it a
 # dictionary mapping possible results to nonnegative weights. It will choose
@@ -62,7 +59,7 @@ end
 # Like sonic pi's builtin scale function, but handles negative indices.
 def major(tonic, ix)
 	half_tones = [0,2,4,5,7,9,11]
-	Note::new(tonic).midi_note + 12*(ix/7) + half_tones[ix%7]
+	Note.new(tonic).midi_note + 12*(ix/7) + half_tones[ix%7]
 end
 
 # MinNote and MaxNote must be at least 2*StepRange apart so that we can arrange
@@ -88,7 +85,7 @@ def melody_step(lo, hi, n, step)
 	n + wchoose(TransitionWeights[step]) + offset
 end
 
-# TODO: account for leading tones, like -1 -> 0, 3 -> 4, 7 -> 8, etc.
+# TODO: account for leading tones, like -1 -> 0, 3 -> 4, 6 -> 7, etc.
 def random_melody()
 	current_note = 0
 	current_peak = 0
@@ -119,7 +116,7 @@ def random_melody()
 end
 
 def random_attacks(total_beats, attack_beats)
-	result = Set::new
+	result = Set.new
 	while result.size < attack_beats do
 		result << choose(0..total_beats-1)
 	end
@@ -160,14 +157,14 @@ RhythmDensity = 5.0/8
 #
 #       samples[s] ~ HMM(stated, transitionds, observationds) | observations, s_{observations.length} = s
 def hmm_sample(stated, transitionds, observationds, observations)
-	samples = Hash::new {|h,k| h[k] = [k]}
+	samples = Hash.new {|h,k| h[k] = [k]}
 
 	# Make sure we get sane defaults if we access a key that doesn't exist.
-	stated = Hash::new(0).update(stated)
-	new_transitionds  = Hash::new {|h,k| h[k] = Hash::new(0)}
-	new_observationds = Hash::new {|h,k| h[k] = Hash::new(0)}
-	transitionds .each { |s,d| new_transitionds [s] = Hash::new(0).update(d) }
-	observationds.each { |s,d| new_observationds[s] = Hash::new(0).update(d) }
+	stated = Hash.new(0).update(stated)
+	new_transitionds  = Hash.new {|h,k| h[k] = Hash.new(0)}
+	new_observationds = Hash.new {|h,k| h[k] = Hash.new(0)}
+	transitionds .each { |s,d| new_transitionds [s] = Hash.new(0).update(d) }
+	observationds.each { |s,d| new_observationds[s] = Hash.new(0).update(d) }
 	transitionds  = new_transitionds
 	observationds = new_observationds
 	# don't force the GC to hold onto these
@@ -177,15 +174,15 @@ def hmm_sample(stated, transitionds, observationds, observations)
 	observations.each do |o|
 		# First update the probability of being in each state (and extend each
 		# sample by one) using transitionds, ignoring the observation o.
-		samplews = Hash::new {|h,k| h[k] = Hash::new(0)}
+		samplews = Hash.new {|h,k| h[k] = Hash.new(0)}
 		transitionds.each do |s0,d|
 			d.each do |s1,p|
 				samplews[s1][Array.new(samples[s0]) << s1] = p*stated[s0]
 			end
 		end
 		# transform_values is nicer, but we're in ruby 2.3, so...
-		stated = Hash::new(0)
-		samples = Hash::new {|h,k| h[k] = []}
+		stated = Hash.new(0)
+		samples = Hash.new {|h,k| h[k] = []}
 		samplews.each do |s,w|
 			stated[s] = w.inject(0) {|sum,(_,p)| sum+p}
 			samples[s] = wchoose(w)
