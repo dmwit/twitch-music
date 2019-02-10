@@ -124,7 +124,7 @@ def random_attacks(total_beats, attack_beats)
 end
 
 # Must be less than 1
-RhythmDensity = 5.0/8
+RhythmDensity = 5.0/16
 
 # A mild variant of the Viterbi algorithm. Given a hidden Markov model and a
 # string of observations, sample from the distribution of hidden-state
@@ -255,7 +255,7 @@ live_loop :melody do
 				play major(:c4, harmony[i]-3), amp: 0.3
 				i += 1
 			end
-			sleep 0.25
+			sleep 0.125
 		end
 	end
 end
