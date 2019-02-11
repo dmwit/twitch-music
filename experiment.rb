@@ -222,7 +222,7 @@ def add_self_edges(transitionds, new_p)
 	new_transitionds
 end
 
-SelfProbability = 0.8
+SelfProbability = 0.5
 ChordProgression = add_self_edges(ChordProgressionRaw, SelfProbability)
 ChordElements = {
 	0 => { 0 => 0.5, 2 => 0.225, 4 => 0.225, 6 => 0.04, 1 => 0.01 },
@@ -236,8 +236,8 @@ ChordElements = {
 
 def random_harmonization(melody)
 	pitch_classes = (melody.drop(1) << 0).map {|n| n%7}
-	chord_bases = hmm_sample({0=>1.0}, ChordProgression, ChordElements, pitch_classes)[1][0]
-	chord_bases.take(chord_bases.length-1)
+	chord_roots = hmm_sample({0=>1.0}, ChordProgression, ChordElements, pitch_classes)[1][0]
+	chord_roots.take(chord_roots.length-1)
 end
 
 live_loop :melody do
