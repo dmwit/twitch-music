@@ -123,6 +123,11 @@ def random_attacks(total_beats, attack_beats)
 	result
 end
 
+def random_partition(total_beats, attack_beats)
+	attacks = random_attacks(total_beats-1, attack_beats-1).to_a.sort.map {|n| n+1}
+	([0] + attacks).zip(attacks + [total_beats]).map {|start,stop| stop-start}
+end
+
 # Must be less than 1
 RhythmDensity = 5.0/16
 
@@ -240,22 +245,37 @@ def random_harmonization(melody)
 	chord_roots.take(chord_roots.length-1)
 end
 
+def coalesce(arr)
+	return Array.new arr if arr.length < 2
+	result = [arr[0]]
+	j = 0
+	0.upto(arr.length - 2) do |i|
+		if arr[i][0] != arr[i+1][0] then
+			result << arr[i+1]
+			j += 1
+		else
+			result[j][1] += arr[i+1][1]
+		end
+	end
+	result
+end
+
 live_loop :melody do
 	melody = random_melody
 	beat_count = (melody.size/RhythmDensity).ceil
-	rhythm = random_attacks(beat_count, melody.size)
+	rhythm = random_partition(beat_count, melody.size)
 	0.upto(3) do
-		harmony = random_harmonization(melody)
-		i = 0
-		0.upto(beat_count-1) do |beat|
-			if rhythm.include?(beat) then
-				play major(:c4, melody[i])
-				play major(:c4, harmony[i]-7), amp: 0.3
-				play major(:c4, harmony[i]-5), amp: 0.3
-				play major(:c4, harmony[i]-3), amp: 0.3
-				i += 1
+		in_thread do
+			melody.zip(rhythm).each do |note,duration|
+				play major(:c4, note), sustain: 0.125*duration-0.1, release: 0.1
+				sleep 0.125*duration
 			end
-			sleep 0.125
+		end
+		coalesce(random_harmonization(melody).zip(rhythm)).each do |root,duration|
+			play major(:c4, root-7), amp: 0.3, sustain: 0.125*duration-0.1, release: 0.1
+			play major(:c4, root-5), amp: 0.3, sustain: 0.125*duration-0.1, release: 0.1
+			play major(:c4, root-3), amp: 0.3, sustain: 0.125*duration-0.1, release: 0.1
+			sleep 0.125*duration
 		end
 	end
 end
