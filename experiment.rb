@@ -6,7 +6,7 @@ end
 
 StepRange = 4 # maybe jumps of more than a fifth don't sound good, who knows
 
-def transition_weights(from_)
+def melody_transition_weights(from_)
 	max = 2*StepRange
 	# We will use Fisher's noncentral hypergeometric distribution. For
 	# parameters, we choose:
@@ -38,8 +38,8 @@ def transition_weights(from_)
 	weights
 end
 
-# memoize transition_weights
-TransitionWeights = Hash.new { |h,k| h[k] = transition_weights(k) }
+# memoize melody_transition_weights
+MelodyTransitionWeights = Hash.new { |h,k| h[k] = melody_transition_weights(k) }
 
 # Weighted (hence the extra w on the beginning) random choice. Hand it a
 # dictionary mapping possible results to nonnegative weights. It will choose
@@ -82,7 +82,7 @@ def melody_step(lo, hi, n, step)
 		offset = hi-StepRange - n
 	end
 	step = clip(-StepRange, StepRange, step-offset)
-	n + wchoose(TransitionWeights[step]) + offset
+	n + wchoose(MelodyTransitionWeights[step]) + offset
 end
 
 # TODO: account for leading tones, like -1 -> 0, 3 -> 4, 6 -> 7, etc.
@@ -115,6 +115,8 @@ def random_melody()
 	melody
 end
 
+# random_attacks(a,b) samples b elements uniformly at random without
+# replacement from 0 to a-1, returning a set of the sampled elements.
 def random_attacks(total_beats, attack_beats)
 	result = Set.new
 	while result.size < attack_beats do
@@ -123,6 +125,9 @@ def random_attacks(total_beats, attack_beats)
 	result
 end
 
+# random_partition(a,b) selects a random interval partitioning of size b of the
+# set of integers 0 to a-1 (TODO: from what distribution, exactly? is it
+# uniform?), returning the lengths of each partition in order.
 def random_partition(total_beats, attack_beats)
 	attacks = random_attacks(total_beats-1, attack_beats-1).to_a.sort.map {|n| n+1}
 	([0] + attacks).zip(attacks + [total_beats]).map {|start,stop| stop-start}
@@ -245,6 +250,8 @@ def random_harmonization(melody)
 	chord_roots.take(chord_roots.length-1)
 end
 
+# Given a list of pairs, coalesce neighbors with equal first parts by summing
+# their second parts.
 def coalesce(arr)
 	return Array.new arr if arr.length < 2
 	result = [arr[0]]
