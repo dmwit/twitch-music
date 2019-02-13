@@ -267,6 +267,58 @@ def coalesce(arr)
 	result
 end
 
+MaxTriadJump = 3
+
+# We'll make our bass lines with a sort of binary search-like algorithm. Given
+# a series of chord roots, and a starting and ending note, we'll choose a bass
+# note for the middle of the chord progression, then recurse on the first and
+# last half of the progression.
+#
+# How to choose the bass note for the middle? Eh... choose randomly from the
+# (let's say) three closest triad notes on either side of the arithmetic mean of
+# the start and stop points, weighted by the inverse of how far away they are
+# from the start and stop.
+def random_bassline(roots, start, stop)
+	return [start, stop] if roots.length < 3
+	mid_idx = roots.length / 2
+	mid_root = roots[mid_idx]
+	triad = Set.new [0,2,4]
+	choices = {}
+
+	candidate = ((start + stop) / 2.0).ceil
+	while choices.length < MaxTriadJump do
+		if triad.include?((candidate - mid_root) % 7) then
+			choices[candidate] = 1.0 / ((candidate - start).abs + (candidate - stop).abs + 1)
+		end
+		candidate += 1
+	end
+
+	candidate = ((start + stop) / 2.0).floor
+	while choices.length < 2*MaxTriadJump do
+		if triad.include?((candidate - mid_root) % 7) then
+			choices[candidate] = 1.0 / ((candidate - start).abs + (candidate - stop).abs + 1)
+		end
+		candidate -= 1
+	end
+
+	mid_note = wchoose(choices)
+	lbass = random_bassline(roots.take(mid_idx+1), start, mid_note)
+	rbass = random_bassline(roots.drop(mid_idx  ), mid_note, stop)
+	lbass + rbass.drop(1)
+end
+
+# The notes of the various triads, clipped to a smallish range a tiny bit
+# bigger than one octave.
+ShortRangeTriadMembers = [
+	[-7,-5,-3,0,2], # 0
+	[-9,-6,-4,-2,1], # 1
+	[-8,-5,-3,-1,2], # 2
+	[-9,-7,-4,-2,0], # 3
+	[-8,-6,-3,-1,1], # 4
+	[-9,-7,-5,-2,0,2], # 5
+	[-8,-6,-4,-1,1]  # 6
+]
+
 live_loop :melody do
 	melody = random_melody
 	beat_count = (melody.size/RhythmDensity).ceil
@@ -274,14 +326,28 @@ live_loop :melody do
 	0.upto(3) do
 		in_thread do
 			melody.zip(rhythm).each do |note,duration|
-				play major(:c4, note), sustain: 0.125*duration-0.1, release: 0.1
+				play major(:c5, note), sustain: 0.125*duration-0.1, release: 0.1
 				sleep 0.125*duration
 			end
 		end
-		coalesce(random_harmonization(melody).zip(rhythm)).each do |root,duration|
-			play major(:c4, root-7), amp: 0.3, sustain: 0.125*duration-0.1, release: 0.1
-			play major(:c4, root-5), amp: 0.3, sustain: 0.125*duration-0.1, release: 0.1
-			play major(:c4, root-3), amp: 0.3, sustain: 0.125*duration-0.1, release: 0.1
+		harmony = coalesce(random_harmonization(melody).zip(rhythm))
+		in_thread do
+			harmony.each do |root,duration|
+				1.upto(2*duration) do
+					play major(:c5, ShortRangeTriadMembers[root].choose), amp: 0.4, sustain: 0.11, release: 0.015
+					sleep 0.0625
+				end
+			end
+		end
+		harmony_roots = harmony.map {|root,_| root}
+		harmony_durations = harmony.map {|_,duration| duration}
+		bassline = random_bassline(harmony_roots, 0, 0)
+		# Funny edge case: the bass line always has at least two notes, but the
+		# harmony may have just one chord. To compensate, we add a duration of
+		# 0 that will get coalesced away in that case (and never observed in
+		# other cases).
+		coalesce(bassline.zip(harmony_durations + [0])).each do |note,duration|
+			play major(:c5, note-14), amp: 1.5, sustain: 0.125*duration-0.1, release: 0.1
 			sleep 0.125*duration
 		end
 	end
