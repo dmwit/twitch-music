@@ -245,26 +245,52 @@ ChordElements = {
 }
 
 def random_harmonization(melody)
-	pitch_classes = (melody.drop(1) << 0).map {|n| n%7}
+	pitch_classes = (melody.drop(1).map {|d| d.value%7}) << 0
 	chord_roots = hmm_sample({0=>1.0}, ChordProgression, ChordElements, pitch_classes)[1][0]
-	chord_roots.take(chord_roots.length-1)
+	chord_roots.take(chord_roots.length-1).map.with_index {|root,i| melody[i].with_value(root)}
 end
 
-# Given a list of pairs, coalesce neighbors with equal first parts by summing
-# their second parts.
-def coalesce(arr)
+# Given an array of Durables, coalesce neighbors with equal values by summing
+# their durations.
+def coalesce_a(arr)
 	return Array.new arr if arr.length < 2
 	result = [arr[0]]
 	j = 0
 	0.upto(arr.length - 2) do |i|
-		if arr[i][0] != arr[i+1][0] then
+		if arr[i].value != arr[i+1].value then
 			result << arr[i+1]
 			j += 1
 		else
-			result[j][1] += arr[i+1][1]
+			result[j].duration += arr[i+1].duration
 		end
 	end
 	result
+end
+
+# Like coalesce_a but takes a block suitable for passing to Enumerator.new.
+def coalesce_e(&block)
+	enumerator = Enumerator.new(&block)
+	Enumerator.new do |y|
+		begin
+			here = enumerator.next
+		rescue StopIteration
+			return
+		end
+		loop do
+			begin
+				there = enumerator.next
+			rescue StopIteration
+				y << here
+				return
+			end
+			if here.value == there.value then
+				here.duration += there.duration
+			else
+				y << here
+				here = there
+			end
+		end
+	end
 end
 
 MaxTriadJump = 3
@@ -279,9 +305,9 @@ MaxTriadJump = 3
 # the start and stop points, weighted by the inverse of how far away they are
 # from the start and stop.
 def random_bassline(roots, start, stop)
-	return [start, stop] if roots.length < 3
+	return roots.zip([start,stop]).map{|root, note| root.with_value(note)} if roots.length < 3
 	mid_idx = roots.length / 2
-	mid_root = roots[mid_idx]
+	mid_root = roots[mid_idx].value
 	triad = Set.new [0,2,4]
 	choices = {}
 
@@ -307,6 +333,56 @@ def random_bassline(roots, start, stop)
 	lbass + rbass.drop(1)
 end
 
+class MemoEnumerator
+	def initialize(chunky=false, &block)
+		@current = []
+		@enumerator = Enumerator.new(&block)
+		@chunky = chunky
+	end
+
+	def [](i)
+		while @current.length <= i do
+			begin
+				more = @enumerator.next
+			rescue StopIteration
+				raise IndexError.new("Index #{i} out of bounds in MemoEnumerator (expected 0..#{@current.length})")
+			end
+			if @chunky then
+				@current += more
+			else
+				@current << more
+			end
+		end
+		@current[i]
+	end
+
+	def each()
+		if block_given? then
+			i = 0
+			loop do
+				begin
+					yield self[i]
+				rescue IndexError
+					break
+				end
+				i += 1
+			end
+		else
+			Enumerator.new do |y|
+				i = 0
+				loop do
+					begin
+						y << self[i]
+					rescue IndexError
+						break
+					end
+					i += 1
+				end
+			end
+		end
+	end
+end
+
 # The notes of the various triads, clipped to a smallish range a tiny bit
 # bigger than one octave.
 ShortRangeTriadMembers = [
@@ -319,36 +395,59 @@ ShortRangeTriadMembers = [
 	[-8,-6,-4,-1,1]  # 6
 ]
 
+class Durable
+	def initialize(val, dur)
+		@value = val
+		@duration = dur
+	end
+
+	attr_accessor :value, :duration
+
+	def with_value(val) Durable.new(val,@duration) end
+end
+
+melody_phrases = MemoEnumerator.new do |y|
+	loop do
+		notes = random_melody
+		rhythm = random_partition((notes.size/RhythmDensity).ceil, notes.size)
+		durations = notes.zip(rhythm).map{|note, dur| Durable.new(note, dur)}
+		4.times {y << durations}
+	end
+end
+harmony_phrases = MemoEnumerator.new do |y|
+	melody_phrases.each {|phrase| y << random_harmonization(phrase)}
+end
+
+# melody = concat melody_phrases; harmony = concat harmony_phrases
+melody   = Enumerator.new{|y| melody_phrases .each {|phrase| phrase.each {|d| y << d}}}
+harmony  = Enumerator.new{|y| harmony_phrases.each {|phrase| phrase.each {|d| y << d}}}
+bassline = coalesce_e do |y|
+	harmony_phrases.each do |phrase|
+		random_bassline(coalesce_a(phrase), 0, 0).each {|d| y << d}
+	end
+end
+
+BeatFrequency = 0.125
+
 live_loop :melody do
-	melody = random_melody
-	beat_count = (melody.size/RhythmDensity).ceil
-	rhythm = random_partition(beat_count, melody.size)
-	0.upto(3) do
-		in_thread do
-			melody.zip(rhythm).each do |note,duration|
-				play major(:c5, note), sustain: 0.125*duration-0.1, release: 0.1
-				sleep 0.125*duration
-			end
+	melody.each do |d|
+		play major(:c5, d.value), sustain: BeatFrequency*(d.duration-0.4), release: 0.4*BeatFrequency
+		sleep BeatFrequency*d.duration
+	end
+end
+
+live_loop :harmony do
+	harmony.each do |d|
+		1.upto(2*d.duration) do
+			play major(:c5, ShortRangeTriadMembers[d.value].choose), amp: 0.4, sustain: 0.9*BeatFrequency, release: 0.1*BeatFrequency
+			sleep BeatFrequency/2
 		end
-		harmony = coalesce(random_harmonization(melody).zip(rhythm))
-		in_thread do
-			harmony.each do |root,duration|
-				1.upto(2*duration) do
-					play major(:c5, ShortRangeTriadMembers[root].choose), amp: 0.4, sustain: 0.11, release: 0.015
-					sleep 0.0625
-				end
-			end
-		end
-		harmony_roots = harmony.map {|root,_| root}
-		harmony_durations = harmony.map {|_,duration| duration}
-		bassline = random_bassline(harmony_roots, 0, 0)
-		# Funny edge case: the bass line always has at least two notes, but the
-		# harmony may have just one chord. To compensate, we add a duration of
-		# 0 that will get coalesced away in that case (and never observed in
-		# other cases).
-		coalesce(bassline.zip(harmony_durations + [0])).each do |note,duration|
-			play major(:c5, note-14), amp: 1.5, sustain: 0.125*duration-0.1, release: 0.1
-			sleep 0.125*duration
-		end
+	end
+end
+
+live_loop :bassline do
+	bassline.each do |d|
+		play major(:c5, d.value-14), amp: 1.5, sustain: BeatFrequency*(d.duration-0.4), release: 0.4*BeatFrequency
+		sleep BeatFrequency*d.duration
 	end
 end
